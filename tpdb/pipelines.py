@@ -12,7 +12,9 @@ import dateparser
 import requests
 from pymongo import MongoClient
 
-from scrapy.exporters import JsonItemExporter
+from tpdb.exporters import SceneItemExporter
+from scrapy.exceptions import DropItem
+from datetime import datetime
 
 
 class TpdbPipeline:
@@ -39,14 +41,14 @@ class TpdbApiScenePipeline:
             if "\\" not in filename and "/" not in filename:
                 filename = Path(path, filename)
         else:
-            filename = Path(path, crawler.spidercls.name + "_" + time.strftime("%Y%m%d-%H%M") + ".json")
+            filename = Path(path, crawler.spidercls.name + ".json")
 
         if crawler.settings.get('export'):
             if crawler.settings.get('export') == 'true':
                 print(f"*** Exporting to file: {filename}")
                 self.fp = open(filename, 'wb')
-                self.fp.write('{"scenes":['.encode())
-                self.exporter = JsonItemExporter(self.fp, ensure_ascii=False, encoding='utf-8', sort_keys=True, indent=2)
+                self.fp.write('{'.encode())
+                self.exporter = SceneItemExporter(self.fp, ensure_ascii=False, encoding='utf-8', sort_keys=True, indent=2)
 
     @classmethod
     def from_crawler(cls, crawler):
@@ -55,6 +57,14 @@ class TpdbApiScenePipeline:
     async def process_item(self, item, spider):
         if spider.debug is True:
             return item
+        date = item['date'][ 0 : 10 ]
+        print(f"Date: " + date)
+        days_ago = (datetime.now() - datetime.fromisoformat(date)).days
+        #  .strptime(date, '%y-%m-%d')
+        print(f"Days ago: " + str(days_ago))
+
+        if days_ago > int(self.crawler.settings.get('DAYS_OLD_TRESHOLD')):
+            raise DropItem(f"Scene too old {item}")
 
         # So we don't re-send scenes that have already been scraped
         if self.crawler.settings['ENABLE_MONGODB']:
@@ -136,7 +146,7 @@ class TpdbApiScenePipeline:
     def close_spider(self, spider):
         if spider.settings.get('export'):
             if spider.settings.get('export') == "true":
-                self.fp.write(']}'.encode())
+                self.fp.write('}'.encode())
                 self.fp.close()
 
 
@@ -168,7 +178,7 @@ class TpdbApiPerformerPipeline:
                 print(f"*** Exporting to file: {filename}")
                 self.fp = open(filename, 'wb')
                 self.fp.write('{"scenes":['.encode())
-                self.exporter = JsonItemExporter(self.fp, ensure_ascii=False, encoding='utf-8', sort_keys=True, indent=2)
+                self.exporter = SceneItemExporter(self.fp, ensure_ascii=False, encoding='utf-8', sort_keys=True, indent=2)
 
     @classmethod
     def from_crawler(cls, crawler):
